@@ -1,0 +1,34 @@
+{
+  "name": "bitcore-payment-codes",
+  "version": "1.0.0",
+  "description": "Payment Codes (BIP47) support for bitcore",
+  "author": "BitPay <dev@bitpay.com>",
+  "main": "index.js",
+  "scripts": {
+    "lint": "gulp lint",
+    "test": "gulp test",
+    "coverage": "gulp coverage",
+    "build": "gulp"
+  },
+  "keywords": [
+    "bitcoin",
+    "bitcore",
+    "bip47",
+    "payment codes"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bitpay/bitcore-payment-codes.git"
+  },
+  "browser": "lib/browser.js",
+  "dependencies": {
+    "bitcore-lib": "^0.13.7"
+  },
+  "devDependencies": {
+    "bitcore-build": "git://github.com/bitpay/bitcore-build.git#a93a9970e3a0b3f948309730d4e4af5100dddf5a",
+    "brfs": "^1.2.0",
+    "chai": "~1.10.0",
+    "gulp": "^3.8.10"
+  },
+  "license": "MIT"
+}
