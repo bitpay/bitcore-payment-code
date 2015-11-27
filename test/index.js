@@ -54,6 +54,21 @@ describe('PaymentCode', function() {
       }).should.deep.equal(['mzwzWysDsE8YunuFRgBCAAr2cgh1b81Qap']);
 
     });
+
+    it('Should create from code', function() {
+      var pc = new PaymentCode('PM8TJgiBF3npDfpxaKqU9W8iDL3T9v8j1RMVqoLqNFQcFdJ6PqjmcosHEQsHMGwe3CcgSdPz46NvJkNpHWym7b3XPF2CMZvcMT5vCvTnh58zpw529bGn');
+
+
+      _.map(pc.notificationPublicKeys, function(x) {
+        return x.toString();
+      }).should.deep.equal(['03032f6a9fa2e495b056755dfda82b288e22a71851032c02450e6ebbbef1695191']);
+
+
+      _.map(pc.notificationAddresses, function(x) {
+        return x.toString();
+      }).should.deep.equal(['18VPtWU95XYkKu47nrARz6hpQEzZmBPJMu']);
+
+    });
   });
 
 });
