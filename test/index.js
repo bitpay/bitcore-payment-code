@@ -71,4 +71,22 @@ describe('PaymentCode', function() {
     });
   });
 
+
+  describe('Payments', function() {
+
+    it('Should create a notification output', function() {
+      var xpriv = 'xprv9s21ZrQH143K2mKd7JFg7TLZaD6kYvuUGCq2RRqBGUxD7r14Acyaizf42LiGpSJxGCd8AKh4KXowS348PuhUxpTx45yw5iUc8ktXrWXLRnR';
+      var xPrivKey = new bitcore.HDPrivateKey(xpriv);
+      var xPubKey = xPrivKey.hdPublicKey;
+      var pc = new PaymentCode(xPubKey);
+
+      // var xPrivKey2 = new bitcore.HDPrivateKey('xprv9s21ZrQH143K2nvwJx7FDB1qugo9xZxaRqMzsV72RxWaLwsMpmg8GsYsVEiwQD7qSpyuXn8oCUBdFbKnDBBKogtbtzBR2ubz5nPg8ojowWv');
+      // var xPubKey2 = xPrivKey2.hdPublicKey;
+      var pc2 = new PaymentCode('PM8TJe68G1AE62CVEchCC7HnXnAa4PfxWPtYPsfnZ5ishRvo2qe6H3DcrN94ZU8DZ2CwAFDzqucPzSy9XstwQkfKD1A3VnhUvqUKvk5V9PFar9Ww3dsD');
+
+      var payInfo = pc.makePaymentInfo(pc2, xPrivKey, 0, 0);
+console.log('[index.js.86:outputs:]', payInfo); //TODO
+
+    });
+  });
 });

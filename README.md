@@ -28,10 +28,9 @@ For example, the following code would verify a payment request:
 var PaymentCodes = require('bitcore-payment-codes');
 
 // xPubKey need to be previously derived to m/47'/0'/0' from master
-var myPc = new PaymentCode(xPubKey); // Generate a payment Code
-//also, new PaymentCode(xPubKey) 
-//also, new PaymentCode(xPubKey) 
-//also, new PaymentCode([xPubkeys], m) 
+
+var myPc = new PaymentCode([xPubKey]); // Generate a payment Code
+//also, new PaymentCode([xPubKey0, ..., xPubKeyN], m)  // Multisig M-N
 
 var serializedPaymentCode = myPc.toString(); // PaymentCode to share
 
@@ -41,9 +40,10 @@ var notificationAddress = publicKey.toAddress();
 // Making a payment
 var hisPc = new PaymentCode(code);
 var notificationAddress = hisPc.getNotificationAddress();
-var address = hisPc.getPaymentAddress(index);
 
 var output = myPc.makeNotificationOutput(hisPc, xPrivKey);  // OP_RETURN content
+var address = myPc.getPaymentAddress(hisPc,index);
+
 // also myPc.makeNotificationOutput(hisPc, privKey); 
 
 
