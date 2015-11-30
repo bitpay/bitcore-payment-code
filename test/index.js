@@ -132,5 +132,41 @@ describe('PaymentCode', function() {
 
     });
 
+
+    describe('Multiple payments(Bob receives notification from Alice)', function() {
+      var a = tc1;
+      var b = tc2;
+ 
+      var alice = new PaymentCode([a.xPubKey]);
+      _.each(_.range(1, 10), function(i) {
+        var fromAliceToBob = alice.makePaymentInfo(b.paymentCode, a.xPrivKey, i, 0);
+        it('Should decode payment '+i+' (Bobfrom Alice)', function() {
+
+          var txToBob = new bitcore.Transaction()
+            .from({
+              "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
+              "vout": 0,
+              "scriptPubKey": "76a9145227a227819489ee792a7253d2fe6c764673123288ac",
+              "amount": 4.9998
+            })
+            .addData(new Buffer(fromAliceToBob.notificationOutputs[0], 'hex'))
+            .to('14L2fpcYwQQMmJvVJeewyuvdGfi49HmCZY', 100000);
+
+          var x = bitcore.HDPrivateKey(a.xPrivKey);
+          txToBob.sign(x.derive('m/0').privateKey);
+          var txToBobHex = txToBob.uncheckedSerialize();
+
+          var bob = new PaymentCode(b.paymentCode);
+          var payInfo = bob.retrivePaymentInfo(txToBobHex, b.xPrivKey, i);
+          payInfo.xPublicKeys[0].should.equal(a.xPubKey.toString());
+          payInfo.hisPc.should.equal(a.paymentCode);
+
+          // Is the given private key correct?
+          var p = bitcore.PrivateKey(payInfo.privateKey).publicKey;
+          var addr = p.toAddress();
+          payInfo.paymentAddress.should.equal(addr.toString());
+        });
+      });
+    });
   });
 });
