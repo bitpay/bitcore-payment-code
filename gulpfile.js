@@ -2,4 +2,4 @@
 
 var gulp_bitcore = require('bitcore-build');
 
-gulp_bitcore('payment-codes');
+gulp_bitcore('payment-code');

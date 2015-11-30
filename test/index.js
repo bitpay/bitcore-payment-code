@@ -122,7 +122,6 @@ describe('PaymentCode', function() {
 
       var bob = new PaymentCode(b.paymentCode);
       var payInfo = bob.retrivePaymentInfo(txToBobHex, b.xPrivKey, 1);
-console.log('[index.js.125:payInfo:]',payInfo); //TODO
       payInfo.xPublicKeys[0].should.equal(a.xPubKey.toString());
       payInfo.hisPc.should.equal(a.paymentCode);
 
