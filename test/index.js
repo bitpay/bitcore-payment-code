@@ -121,7 +121,7 @@ describe('PaymentCode', function() {
       var txToBobHex = txToBob.uncheckedSerialize();
 
       var bob = new PaymentCode(b.paymentCode);
-      var payInfo = bob.retrivePaymentInfo(txToBobHex, b.xPrivKey, 1);
+      var payInfo = bob.retrievePaymentInfo(txToBobHex, b.xPrivKey, 1);
       payInfo.xPublicKeys[0].should.equal(a.xPubKey.toString());
       payInfo.hisPc.should.equal(a.paymentCode);
 
@@ -136,11 +136,11 @@ describe('PaymentCode', function() {
     describe('Multiple payments(Bob receives notification from Alice)', function() {
       var a = tc1;
       var b = tc2;
- 
+
       var alice = new PaymentCode([a.xPubKey]);
       _.each(_.range(1, 10), function(i) {
         var fromAliceToBob = alice.makePaymentInfo(b.paymentCode, a.xPrivKey, i, 0);
-        it('Should decode payment '+i+' (Bobfrom Alice)', function() {
+        it('Should decode payment ' + i + ' (Bobfrom Alice)', function() {
 
           var txToBob = new bitcore.Transaction()
             .from({
@@ -157,7 +157,7 @@ describe('PaymentCode', function() {
           var txToBobHex = txToBob.uncheckedSerialize();
 
           var bob = new PaymentCode(b.paymentCode);
-          var payInfo = bob.retrivePaymentInfo(txToBobHex, b.xPrivKey, i);
+          var payInfo = bob.retrievePaymentInfo(txToBobHex, b.xPrivKey, i);
           payInfo.xPublicKeys[0].should.equal(a.xPubKey.toString());
           payInfo.hisPc.should.equal(a.paymentCode);
 
