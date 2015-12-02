@@ -1,5 +1,6 @@
 'use strict';
 
+var xor = require('./xor');
 var bitcore = require('bitcore-lib');
 var _ = bitcore.deps._;
 var $ = bitcore.util.preconditions;
@@ -9,30 +10,18 @@ var Point = bitcore.crypto.Point;
 var BN = bitcore.crypto.BN;
 
 var Address = bitcore.Address;
+var PrivateKey = bitcore.PrivateKey;
 var PublicKey = bitcore.PublicKey;
 var HDPublicKey = bitcore.HDPublicKey;
 var HDPrivateKey = bitcore.HDPrivateKey;
-var Transaction = bitcore.Transaction;
 var Base58Check = bitcore.encoding.Base58Check;
 
-// From https://github.com/czzarr/node-bitwise-xor/blob/master/index.js
-function xor(a, b) {
-  if (!Buffer.isBuffer(a)) a = new Buffer(a)
-  if (!Buffer.isBuffer(b)) b = new Buffer(b)
-  var res = []
-  if (a.length > b.length) {
-    for (var i = 0; i < b.length; i++) {
-      res.push(a[i] ^ b[i])
-    }
-  } else {
-    for (var i = 0; i < a.length; i++) {
-      res.push(a[i] ^ b[i])
-    }
-  }
-  return new Buffer(res);
-};
+var Secret =  require('./secret');
+var BlindingFactor =  require('./blindingFactor');
+var NotificationOut =  require('./notificationOut');
 
-function PaymentCode(x, blindingFactor, network) {
+// If xpriv / xpub is supplied, it must be previosly derived to, eg, m/47'/0'/0'
+function PaymentCode(x,  network) {
   $.checkArgument(x, 'First argument is required');
 
   var self = this;
@@ -40,12 +29,14 @@ function PaymentCode(x, blindingFactor, network) {
 
   if (x instanceof PaymentCode)
     return x;
+  else if (x instanceof HDPrivateKey)
+    return new PaymentCode([x.hdPublicKey]);
   else if (x instanceof HDPublicKey)
     return new PaymentCode([x]);
   else if (_.isArray(x))
     this._buildFromExtendedPublicKeys(x);
   else if (Buffer.isBuffer(x))
-    this._buildFromBuffer(x, blindingFactor, network);
+    this._buildFromBuffer(x, network);
   else
     this._buildFromCode(x);
 
@@ -54,7 +45,7 @@ function PaymentCode(x, blindingFactor, network) {
 
 PaymentCode.VERSION = 0x47;
 
-PaymentCode.prototype._buildFromBuffer = function(data, blindingFactor, network) {
+PaymentCode.prototype._buildFromBuffer = function(data,  network) {
   var buf = this.buffer = data;
   $.checkArgument(buf.length % 80 == 0, "Invalid payment code size");
 
@@ -76,17 +67,6 @@ PaymentCode.prototype._buildFromBuffer = function(data, blindingFactor, network)
       network: network,
     };
 
-    if (blindingFactor) {
-      var pubBf = blindingFactor.slice(0, 32);
-      pubBf = Buffer.concat([new Buffer('00', 'hex'), pubBf]);
-      o.publicKey = xor(o.publicKey, pubBf);
-      o.chainCode = xor(o.chainCode, blindingFactor.slice(32, 64));
-
-      // update buffer
-      o.publicKey.copy(this.buffer, i + 2, 0, 33);
-      o.chainCode.copy(this.buffer, i + 35, 0, 32);
-    };
-
     this.xPubKeys.push(new HDPublicKey(o));
     i += 80;
   };
@@ -101,13 +81,11 @@ PaymentCode.prototype._buildFromCode = function(x) {
   // TODO network (version[0] == xx
   var network = 'livenet';
 
-  return this._buildFromBuffer(data.slice(1), null, network);
+  return this._buildFromBuffer(data.slice(1), network);
 };
 
-
-PaymentCode.prototype._getEncrypted = function(bf) {
-  var enc = this._calcBuffer(bf);
-  return enc;
+PaymentCode.prototype.buildNotificationTo = function(hisPc, privateKey, outpoint) {
+  return new NotificationOut(this.toString(), hisPc, privateKey, outpoint);
 };
 
 // Will throw if resulting point is not valid, so client can increment index
@@ -124,11 +102,12 @@ PaymentCode.prototype.makePaymentInfo = function(hisPc, xPrivKey, index, outpoin
     return x = ownHDPubKey
   }), 'The supplied private key does not match the payment code\'s public keys');
 
+  var n = new NotificationOut(this, hisPc, p);
+
   var publicKeys = [];
   var secrets = [];
   var notificationOutputs = [];
 
-  var G = Point.getG();
 
   var privateKey = ownHDPrivKey.derive('m/0').privateKey;
   var a = privateKey.bn;
@@ -140,22 +119,19 @@ PaymentCode.prototype.makePaymentInfo = function(hisPc, xPrivKey, index, outpoin
     var pubKey = xpub.derive(path).publicKey;
     var B = pubKey.point;
 
-    var S = B.mul(a);
-    var Sx = new Buffer(S.x, 'hex');
-    var s = BN.fromBuffer(Hash.sha256(Sx));
-
-    // Validate point, will throw otherwise
-    var p = Point.fromX(0, s);
-
-    // payment address:
-    var offset = G.mul(s);
-    var Bp = B.add(offset);
+    var secret = new Secret(B.mul(a));
+    var Bp = secret.offsetPublicKey(B);
 
     // blinding factor
-    var bf = Hash.sha512hmac(Sx, BufferUtil.integerAsBuffer(outpoint));
-    var output = self._getEncrypted(bf);
+    var bf = new BlindingFactor(secret, outpoint);
+
+console.log('##IN :', self.buffer.toString('hex')); //TODO
+    var output = new Buffer(self.buffer);
+    bf.apply(output);
+console.log('##OUT:',output.toString('hex')); //TODO
+
     publicKeys.push(new PublicKey(Bp));
-    secrets.push(s.toString('hex'));
+    secrets.push(secret.toString());
     notificationOutputs.push(output.toString('hex'));
   });
 
@@ -176,126 +152,44 @@ PaymentCode.prototype.makePaymentInfo = function(hisPc, xPrivKey, index, outpoin
 };
 
 
-PaymentCode.extractPaymentInfo = function(tx) {
-  var tx = new Transaction(tx);
-  var outpoint, pubKey;
+PaymentCode.prototype.computePaymentPublicKeys = function(secret, index) {
+  var res = [];
 
-  // Get public key
-  _.each(tx.inputs, function(i, j) {
-    if (!i.script) return;
-    if (!i.script.isPublicKeyHashIn()) return;
+  _.each(this.xPubKeys, function(x) {
+    var B = x.derive('m/' + index).publicKey.point;
 
-    pubKey = new PublicKey(i.script.chunks[1].buf);
-    outpoint = j;
+    // payment address:
+    var offset = G.mul(secret);
+    var Bp = B.add(offset);
+
+    res.push(new PublicKey(Bp));
+
   });
 
-  if (!pubKey)
-    throw new Error('No pubkey found in tx\'s inputs');
-
-  var data;
-  // Get op_ret 
-  _.each(tx.outputs, function(o, j) {
-    if (!o.script) return;
-
-    if (!o.script.isDataOut()) return;
-    if (!data)
-      data = o.script.getData();
-  });
-
-  if (!data)
-    throw new Error('No OP_RETURN data found in tx\'s outpus');
-
-  return {
-    outpoint: outpoint,
-    data: data,
-    publicKey: pubKey,
-  };
+  return res;
 };
 
+PaymentCode.prototype.computePaymentAddress = function(secret, index) {
+  $.checkState(this.n == 1, 'No payment address associated to multisig payment codes');
 
-
-PaymentCode.prototype.retrievePaymentInfo = function(tx, xPrivKey, index) {
-  $.checkArgument(xPrivKey, "Privatekey key must be supplied");
-  $.checkArgument(_.isNumber(index), "Index must be a number");
-
-  var ownHDPrivKey = HDPrivateKey(xPrivKey);
-  var ownHDPubKey = ownHDPrivKey.hdPublicKey;
-
-  var tx = new Transaction(tx);
-  var outpoint, pubKey;
-
-
-  // Get public key
-  _.each(tx.inputs, function(i, j) {
-    if (!i.script) return;
-    if (!i.script.isPublicKeyHashIn()) return;
-
-    pubKey = new PublicKey(i.script.chunks[1].buf);
-    outpoint = j;
-  });
-
-  if (!pubKey)
-    throw new Error('No pubkey found in tx\'s inputs');
-
-  var data;
-  // Get op_ret 
-  _.each(tx.outputs, function(o, j) {
-    if (!o.script) return;
-
-    if (!o.script.isDataOut()) return;
-    if (!data)
-      data = o.script.getData();
-  });
-
-  if (!data)
-    throw new Error('No OP_RETURN data found in tx\'s outpus');
-
-
-  // privateKey for notification address
-  var b = ownHDPrivKey.derive('m/0').privateKey.bn;
-
-
-  var G = Point.getG();
-  var A = pubKey.point;
-
-  var S = A.mul(b);
-  var Sx = new Buffer(S.x, 'hex');
-  var s = BN.fromBuffer(Hash.sha256(Sx));
-
-
-  // Validate point, will throw otherwise
-  var p = Point.fromX(0, s);
-
-  // PrivateKey for payment
-  var b = ownHDPrivKey.derive('m/' + index).privateKey.bn;
-  var B = ownHDPubKey.derive('m/' + index).publicKey.point;
+  var B = this.xPubKeys[0].derive('m/' + index).publicKey.point;
 
   // payment address:
-  var offset = G.mul(s);
+  var offset = G.mul(secret);
   var Bp = B.add(offset);
+
+  var publicKey = new PublicKey(Bp);
+  return publicKey.toAddress();
+};
+
+PaymentCode.prototype.computePaymentPrivateKey = function(xPrivKey, secret, index) {
+  var b = xPrivKey.derive('m/' + index).privateKey.bn;
   var bp = b.add(s);
 
   // Check all is OK (slow)
-  $.checkState(Bp.eq(G.mul(bp)), 'Could not find private key for ephemeral address');
+  //$.checkState(Bp.eq(G.mul(bp)), 'Could not find private key for ephemeral address');
 
-
-  // blinding factor
-  var bf = Hash.sha512hmac(Sx, BufferUtil.integerAsBuffer(outpoint));
-
-  var publicKey = new PublicKey(Bp);
-  var payAddress = publicKey.toAddress().toString();
-
-  var hisPc = new PaymentCode(data, bf);
-  return {
-    publicKey: publicKey.toString(),
-    paymentAddress: payAddress,
-    privateKey: bp.toBuffer().toString('hex'),
-    secret: s.toString('hex'),
-    hisPc: hisPc.toString(),
-    xPublicKeys: _.map(hisPc.xPubKeys, function(x) {
-      return (new HDPublicKey(x)).toString();
-    }),
-  };
+  return PrivateKey.fromBuffer(bp.toBuffer());
 };
 
 PaymentCode.prototype._buildFromExtendedPublicKeys = function(xPubKeys) {
@@ -329,11 +223,7 @@ PaymentCode.prototype._expand = function() {
   }
 };
 
-PaymentCode.prototype._calcBuffer = function(blindingFactor) {
-
-  if (blindingFactor)
-    $.checkArgument(blindingFactor.length == 64, 'Bliding factor should have 64 bytes');
-
+PaymentCode.prototype._calcBuffer = function() {
   $.checkState(this.xPubKeys.length == 1, "Multisig Payment Codes not supported yet")
 
   var reserved = new Buffer(13);
@@ -342,13 +232,6 @@ PaymentCode.prototype._calcBuffer = function(blindingFactor) {
     var obj = x.toObject();
     var pub = new Buffer(obj.publicKey, 'hex');
     var chain = new Buffer(obj.chainCode, 'hex');
-
-    if (blindingFactor) {
-      var pubBf = blindingFactor.slice(0, 32);
-      pubBf = Buffer.concat([new Buffer('00', 'hex'), pubBf]);
-      pub = xor(pub, pubBf);
-      chain = xor(chain, blindingFactor.slice(32, 64));
-    };
 
     var pc = new Buffer('0100', 'hex'); // version + options
     pc = Buffer.concat([pc, pub]);
