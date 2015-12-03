@@ -17,9 +17,7 @@ npm install bitcore-payment-code
 bower install bitcore-payment-code
 ```
 
-TODO: There are many examples of how to use it on the [developer guide section for payment protocol](http://bitcore.io/guide/paymentprotocol.html). 
 
-For example, the following code would verify a payment request:
 
 ```javascript
 
@@ -58,18 +56,8 @@ var paymentInfo = alice.makePaymentInfo(BobPaymentCode, xPrivKey, index, outpoin
 
 // Then alice needs to send a notification TX:
 // .from should be a valid UTXO
-  var txToBob = new bitcore.Transaction()
-    .from({
-      "txid": "xxx",
-      "vout": 0,
-      "scriptPubKey": "76a9145227a227819489ee792a7253d2fe6c764673123288ac",
-      "amount": 1.00,
-    })
-    .addData(new Buffer(paymentInfo.notificationOutputs[0], 'hex'))
-    .to(paymentInfo.notificationAddresses[0], 10000);
 
-  var x = bitcore.HDPrivateKey(xPrivKey);
-  txToBob.sign(x.derive('m/0').privateKey);
+
 
 // Then the TX should be broadcasted... And the actual payment sent to `paymentInfo.paymentAddress`
 // For future payments, index should be incremented.
@@ -78,21 +66,8 @@ var paymentInfo = alice.makePaymentInfo(BobPaymentCode, xPrivKey, index, outpoin
 // ===================================================
 // Bob retrieval of the payment....
 
-var xPrivKey = MasterPrivKey.derive("m/47'/0'/0'"); // See BIP47 for details
-var xPubKey = xPrivKey.hdPublicKey;
-var bobPc = new PaymentCode([xPubKey]); // Generate a payment Code
 
 // When Bob receives a TX on his notification address:
-  var payInfo = bobPc.retrievePaymentInfo(txHex, xPrivKey, index);
-
-// Sample output:
-{ publicKey: '023ded791973898f6892cead1b62ba57b9e5dc6c45aeaf0f20813acec96540cec1',
-  paymentAddress: '1AJ3gNTaJ96NBDcj4cVmPZVBB7sF9rVA31',
-  privateKey: 'dfd5f81894cc8d2d5af3cdc34ec967a20e691ea3172e939287b5aaa526188b00',
-  hisPc: 'PM8TJgiBF3npDfpxaKqU9W8iDL3T9v8j1RMVqoLqNFQcFdJ6PqjmcosHEQsHMGwe3CcgSdPz46NvJkNpHWym7b3XPF2CMZvcMT5vCvTnh58zpw529bGn',
-  xPublicKeys: [ 'xpub661MyMwAqRbcFFQ6DKngUbHJ8EwExPdKdRkdDpEnppVBzeLCiAHqGnyXseaogVEDKjAgutwm4cdrwgC5LJosUcHvpqES1ZRhgkYg8LHH6rL' ] }
-
-// The payment address index `index` is given, along with the proper private key to retrieve it.
 
 ```
 
