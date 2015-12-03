@@ -7,6 +7,7 @@ var bitcore = require('bitcore-lib');
 var _ = bitcore.deps._;
 var PrivateKey = bitcore.PrivateKey;
 var PublicKey = bitcore.PublicKey;
+var HDPrivateKey = bitcore.HDPrivateKey;
 
 var is_browser = process.browser;
 
@@ -104,21 +105,19 @@ describe('PaymentCode', function() {
       var n = new NotificationOut(tc1.paymentCode, tc2.paymentCode, utxoPrivKey);
 
       var tx = new bitcore.Transaction()
-      .from({
-        "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
-        "vout": 0,
-        "scriptPubKey": n.getScriptPubKey().toString(),
-        "amount": 1
-      })
-      .addData(new Buffer(n.outputs[0], 'hex'))
-      .to(tc2.notificationAddresses[0], 100000)
-      .sign(utxoPrivKey);
+        .from({
+          "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
+          "vout": 0,
+          "scriptPubKey": n.getScriptPubKey().toString(),
+          "amount": 1
+        })
+        .addData(n.outputs[0])
+        .to(tc2.notificationAddresses[0], 100000)
+        .sign(utxoPrivKey);
 
       // BOB
       var nIn = NotificationIn.fromTransaction(tx.uncheckedSerialize());
-      var x = bitcore.HDPrivateKey(tc2.xPrivKey);
-      var notificationPrivateKey = x.derive('m/0').privateKey;
-      var secret = Secret.fromNotification(nIn, notificationPrivateKey);
+      var secret = Secret.fromNotification(nIn, tc2.xPrivKey);
 
       secret.s.toString('hex').should.equal(n.secrets[0].s.toString('hex'));
       secret.x.toString('hex').should.equal(n.secrets[0].x.toString('hex'));
@@ -126,7 +125,7 @@ describe('PaymentCode', function() {
   });
 
 
-  describe('Payment from Alice to Bob', function() {
+  describe('Payment Notification from Alice to Bob', function() {
     var a, b;
 
     beforeEach(function() {
@@ -134,89 +133,78 @@ describe('PaymentCode', function() {
       b = tc2;
     });
 
-    it('Should create a notification output (Alice to Bob)', function() {
-      var alice = new PaymentCode([a.xPubKey]);
-      var fromAliceToBob = alice.makePaymentInfo(b.paymentCode, a.xPrivKey, 1, 0);
-      fromAliceToBob.notificationAddresses.should.deep.equal(b.notificationAddresses);
-      fromAliceToBob.secrets.should.deep.equal(['8558b665c449018291036030d21b95ca1f77c12c31cc0b93351872f65d6015a2']);
-      fromAliceToBob.paymentAddress.should.equal('13UxrkWiFShZhJJmq3wrHYtsFDbvUwf4oR');
-    });
-
     it('Should decode a notification tx (Bob receives notification from Alice)', function() {
       var alice = new PaymentCode([a.xPubKey]);
-      var utxoPrivKey = new PrivateKey();
+      var utxoPrivKey = new PrivateKey('a0b2bd6acc4fecf7d2b77d637f6bd4450e9ca701d5761b29ed824daab9e76361');
+      //var utxoPrivKey = new PrivateKey();
       var fromAliceToBob = alice.buildNotificationTo(b.paymentCode, utxoPrivKey);
-console.log('[index.js.150:fromAliceToBob:]',fromAliceToBob); //TODO
-
       var txToBob = new bitcore.Transaction()
         .from({
           "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
           "vout": 0,
-          "scriptPubKey": "76a9145227a227819489ee792a7253d2fe6c764673123288ac",
-          "amount": 4.9998
+          "scriptPubKey": fromAliceToBob.getScriptPubKey().toString(),
+          "amount": 1
         })
-        .addData(new Buffer(fromAliceToBob.notificationOutputs[0], 'hex'))
-        .to('14L2fpcYwQQMmJvVJeewyuvdGfi49HmCZY', 100000);
+        .addData(fromAliceToBob.outputs[0])
+        .to(b.notificationAddresses[0], 100000);
 
       var x = bitcore.HDPrivateKey(a.xPrivKey);
-      var notificationPrivateKey = x.derive('m/0').privateKey;
-      txToBob.sign(notificationPrivateKey);
+      txToBob.sign(utxoPrivKey);
       var txToBobHex = txToBob.uncheckedSerialize();
 
+      // BOB
 
-console.log('[index.js.166] BOB ########################################'); //TODO
       var bob = new PaymentCode(b.paymentCode);
-
       var n = NotificationIn.fromTransaction(txToBob);
-      var secret = Secret.fromNotification(n, notificationPrivateKey);
-      console.log('[index.js.127:secret:]', secret.x.toString('hex')); //TODO
+      var secret = Secret.fromNotification(n, b.xPrivKey);
       var herPc = new PaymentCode(n.decrypt(secret));
 
       herPc.toString().should.equal(a.paymentCode);
       herPc.xPubKeys[0].toString().should.equal(a.xPubKey.toString());
+    });
+  });
 
-      // Is the given private key correct?
-      var p = bitcore.PrivateKey(payInfo.privateKey).publicKey;
-      var addr = p.toAddress();
-      payInfo.paymentAddress.should.equal(addr.toString());
+  describe('Multiple Payments from Alice to Bob', function() {
+    var alice, bob, secret, bobXPriv;
 
+    before(function() {
+      var a = tc1;
+      var b = tc2;
+      alice = new PaymentCode([a.xPubKey]);
+      var utxoPrivKey = new PrivateKey();
+      //var utxoPrivKey = new PrivateKey();
+      var fromAliceToBob = alice.buildNotificationTo(b.paymentCode, utxoPrivKey);
+      var txToBob = new bitcore.Transaction()
+        .from({
+          "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
+          "vout": 0,
+          "scriptPubKey": fromAliceToBob.getScriptPubKey().toString(),
+          "amount": 1
+        })
+        .addData(fromAliceToBob.outputs[0])
+        .to(b.notificationAddresses[0], 100000);
+
+      var x = bitcore.HDPrivateKey(a.xPrivKey);
+      txToBob.sign(utxoPrivKey);
+      var txToBobHex = txToBob.uncheckedSerialize();
+
+      // BOB
+
+      bob = new PaymentCode(b.paymentCode);
+      var n = NotificationIn.fromTransaction(txToBob);
+      secret = Secret.fromNotification(n, b.xPrivKey);
+      bobXPriv = new HDPrivateKey(b.xPrivKey);
     });
 
-    //
-    // describe('Multiple payments(Bob receives notification from Alice)', function() {
-    //   var a = tc1;
-    //   var b = tc2;
-    //
-    //   var alice = new PaymentCode([a.xPubKey]);
-    //   _.each(_.range(1, 10), function(i) {
-    //     var fromAliceToBob = alice.makePaymentInfo(b.paymentCode, a.xPrivKey, i, 0);
-    //     it('Should decode payment ' + i + ' (Bobfrom Alice)', function() {
-    //
-    //       var txToBob = new bitcore.Transaction()
-    //         .from({
-    //           "txid": "3e46af54b2a79e8a343145e91e4801ea8611a69cd29852ff95e4b547cfd90b7b",
-    //           "vout": 0,
-    //           "scriptPubKey": "76a9145227a227819489ee792a7253d2fe6c764673123288ac",
-    //           "amount": 4.9998
-    //         })
-    //         .addData(new Buffer(fromAliceToBob.notificationOutputs[0], 'hex'))
-    //         .to('14L2fpcYwQQMmJvVJeewyuvdGfi49HmCZY', 100000);
-    //
-    //       var x = bitcore.HDPrivateKey(a.xPrivKey);
-    //       txToBob.sign(x.derive('m/0').privateKey);
-    //       var txToBobHex = txToBob.uncheckedSerialize();
-    //
-    //       var bob = new PaymentCode(b.paymentCode);
-    //       var payInfo = bob.retrievePaymentInfo(txToBobHex, b.xPrivKey, i);
-    //       payInfo.xPublicKeys[0].should.equal(a.xPubKey.toString());
-    //       payInfo.hisPc.should.equal(a.paymentCode);
-    //
-    //       // Is the given private key correct?
-    //       var p = bitcore.PrivateKey(payInfo.privateKey).publicKey;
-    //       var addr = p.toAddress();
-    //       payInfo.paymentAddress.should.equal(addr.toString());
-    //     });
-    //   });
-    // });
+    _.each(_.range(1, 10), function(i) {
+      it('Should create valid payment ' + i + ' (Bob from Alice)', function() {
+        // Alice
+        var paymentAddress = alice.computePaymentAddress(secret, i);
+console.log('[index.js.202:paymentAddress:]',paymentAddress); //TODO
+        var privKeyP = secret.computePrivateKey(bobXPriv, i);
+
+        //$.checkState(Bp.eq(G.mul(bp)), 'Could not find private key for ephemeral address');
+      });
+    });
   });
 });
