@@ -8,6 +8,7 @@ var _ = bitcore.deps._;
 var PrivateKey = bitcore.PrivateKey;
 var PublicKey = bitcore.PublicKey;
 var HDPrivateKey = bitcore.HDPrivateKey;
+var Point = bitcore.crypto.Point;
 
 var is_browser = process.browser;
 
@@ -164,8 +165,52 @@ describe('PaymentCode', function() {
     });
   });
 
+
+  describe('Key Offsetting with Secret', function() {
+    var a, b;
+
+    beforeEach(function() {
+      a = tc1;
+      b = tc2;
+    });
+
+    it('Should generate a valid key pair after offsetting', function() {
+      var xpriv = HDPrivateKey(a.xPrivKey);
+
+      var randomPrivateKey = new PrivateKey();
+      var secret = new Secret(randomPrivateKey.publicKey.point);
+
+      // New pair
+      var priv = new PrivateKey();
+      var pub = priv.publicKey;
+
+      // Offsetted pair
+      var privP = secret.offsetPrivateKey(priv);
+      var pubP = secret.offsetPublicKey(pub);
+
+      privP.publicKey.toString().should.equal(pubP.toString());
+    });
+
+    it('Should generate a valid key pair after offsetting with paycodes', function() {
+
+      var randomPrivateKey = new PrivateKey();
+      var secret = new Secret(randomPrivateKey.publicKey.point);
+
+      var xpriv = HDPrivateKey(a.xPrivKey);
+      var xpub = xpriv.hdPublicKey;
+
+      var alice = new PaymentCode(xpub);
+
+      var pubP = alice.computePaymentPublicKeys(secret, 0)[0];
+      var privP = secret.computePrivateKey(xpriv, 0);
+
+      privP.publicKey.toString().should.equal(pubP.toString());
+    });
+
+  });
+
   describe('Multiple Payments from Alice to Bob', function() {
-    var alice, bob, secret, bobXPriv;
+    var alice, bob, secret, aXPrivKey;
 
     before(function() {
       var a = tc1;
@@ -193,18 +238,25 @@ describe('PaymentCode', function() {
       bob = new PaymentCode(b.paymentCode);
       var n = NotificationIn.fromTransaction(txToBob);
       secret = Secret.fromNotification(n, b.xPrivKey);
-      bobXPriv = new HDPrivateKey(b.xPrivKey);
+      aXPrivKey = new HDPrivateKey(a.xPrivKey);
     });
 
+    var G = Point.getG();
     _.each(_.range(1, 10), function(i) {
-      it('Should create valid payment ' + i + ' (Bob from Alice)', function() {
+      it('Should create valid payment address ' + i + ' (Bob from Alice)', function() {
         // Alice
         var paymentAddress = alice.computePaymentAddress(secret, i);
-console.log('[index.js.202:paymentAddress:]',paymentAddress); //TODO
-        var privKeyP = secret.computePrivateKey(bobXPriv, i);
-
-        //$.checkState(Bp.eq(G.mul(bp)), 'Could not find private key for ephemeral address');
+        var pubKeyP = alice.computePaymentPublicKeys(secret, i)[0];
+        pubKeyP.toAddress().toString().should.equal(paymentAddress.toString());
       });
+
+      it('Should create valid payment ' + i + ' (Bob from Alice)', function() {
+
+        var pubKeyP = alice.computePaymentPublicKeys(secret, i)[0];
+        var privKeyP = secret.computePrivateKey(aXPrivKey, i);
+        privKeyP.publicKey.toString().should.equal(pubKeyP.toString());
+      });
+
     });
   });
 });
